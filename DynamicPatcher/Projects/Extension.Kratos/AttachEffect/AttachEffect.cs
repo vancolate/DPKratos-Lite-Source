@@ -40,12 +40,14 @@ namespace Extension.Script
 
         public bool NonInheritable;
 
-        private bool active;
+        private bool active; // 有效
         private int duration; // 寿命
         private bool immortal; // 永生
         private TimerStruct lifeTimer;
         private TimerStruct initialDelayTimer;
-        private bool delayToEnable; // 延迟激活中
+        private bool delayToEnable; // 延迟开启
+        private bool inBuilding; // 是否在建造中
+        private bool isDelayToEnable; // 需要延迟激活
 
         private List<IEffect> effects = new List<IEffect>();
 
@@ -114,6 +116,22 @@ namespace Extension.Script
             }
         }
 
+        public bool DelayToEnable()
+        {
+            // 检查初始延迟计时器
+            if (delayToEnable)
+            {
+                delayToEnable = initialDelayTimer.InProgress();
+            }
+            // 检查建筑状态
+            if (inBuilding)
+            {
+                inBuilding = AEManager.InBuilding;
+            }
+            // Logger.Log($"{Game.CurrentFrame} - [{pOwner.Ref.Type.Ref.Base.ID}]{pOwner} 上的 AE [{AEData.Name}] 延迟激活 delayToEnable = {delayToEnable} || inBuilding = {inBuilding}, enableFlag = {isDelayToEnable}");
+            return delayToEnable || inBuilding;
+        }
+
         public void Enable(AttachEffectScript AEManager, Pointer<TechnoClass> pSource, Pointer<HouseClass> pSourceHouse, CoordStruct warheadLocation, int aeMode, bool fromPassenger)
         {
             this.active = true;
@@ -124,16 +142,18 @@ namespace Extension.Script
             this.FromWarhead = default != WarheadLocation;
             this.AEMode = aeMode;
             this.FromPassenger = fromPassenger;
-            if (!delayToEnable || initialDelayTimer.Expired())
+            this.inBuilding = AEManager.InBuilding;
+            this.isDelayToEnable = DelayToEnable();
+            if (!isDelayToEnable)
             {
-
                 EnableEffects();
             }
         }
 
         private void EnableEffects()
         {
-            delayToEnable = false;
+            // Logger.Log($"{Game.CurrentFrame} - [{pOwner.Ref.Type.Ref.Base.ID}]{pOwner} 上的 AE [{AEData.Name}] 激活 isDelayToEnable = {isDelayToEnable}");
+            this.isDelayToEnable = false;
             SetupLifeTimer();
             foreach (IEffect effect in effects)
             {
@@ -146,7 +166,7 @@ namespace Extension.Script
         public void Disable(CoordStruct location)
         {
             this.active = false;
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -161,7 +181,7 @@ namespace Extension.Script
             if (active)
             {
                 // Logger.Log("AE Type {0} {1} and {2}", Type.Name, IsDeath() ? "is death" : "not dead", IsAlive() ? "is alive" : "not alive");
-                active = delayToEnable || (!IsDeath() && IsAlive());
+                active = isDelayToEnable || (!IsDeath() && IsAlive());
             }
             return active;
         }
@@ -253,7 +273,7 @@ namespace Extension.Script
 
         public void MergeDuation(int otherDuration)
         {
-            if (delayToEnable || otherDuration == 0)
+            if (isDelayToEnable || otherDuration == 0)
             {
                 // Logger.Log("{0}延迟激活中，不接受时延修改", Name);
                 return;
@@ -329,7 +349,7 @@ namespace Extension.Script
 
         public void LoadFromStream(IStream stream)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -342,7 +362,7 @@ namespace Extension.Script
 
         public void OnGScreenRender(CoordStruct location)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -356,9 +376,10 @@ namespace Extension.Script
         public void OnUpdate(CoordStruct location, bool isDead)
         {
             this.Location = location;
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
-                if (initialDelayTimer.InProgress())
+                // Logger.Log($"{Game.CurrentFrame} - [{pOwner.Ref.Type.Ref.Base.ID}]{pOwner} 上的 AE [{AEData.Name}] 更新检查 DelayToEnable() = {DelayToEnable()}, isDelayToEnable = {isDelayToEnable}");
+                if (DelayToEnable())
                 {
                     return;
                 }
@@ -373,7 +394,7 @@ namespace Extension.Script
 
         public void OnWarpUpdate(CoordStruct location, bool isDead)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -385,7 +406,7 @@ namespace Extension.Script
 
         public void OnTemporalUpdate(Pointer<TemporalClass> pTemporal)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -397,7 +418,7 @@ namespace Extension.Script
 
         public void OnTemporalEliminate(Pointer<TemporalClass> pTemporal)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -409,7 +430,7 @@ namespace Extension.Script
 
         public void OnRocketExplosion()
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -421,7 +442,7 @@ namespace Extension.Script
 
         public void OnPut(Pointer<CoordStruct> location, DirType dirType)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -433,7 +454,7 @@ namespace Extension.Script
 
         public void OnRemove()
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -446,7 +467,7 @@ namespace Extension.Script
         public void OnReceiveDamage(Pointer<int> pDamage, int distanceFromEpicenter, Pointer<WarheadTypeClass> pWH,
             Pointer<ObjectClass> pAttacker, bool ignoreDefenses, bool preventPassengerEscape, Pointer<HouseClass> pAttackingHouse)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -460,7 +481,7 @@ namespace Extension.Script
             DamageState damageState,
             Pointer<ObjectClass> pAttacker, Pointer<HouseClass> pAttackingHouse)
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -472,7 +493,7 @@ namespace Extension.Script
 
         public void OnReceiveDamageDestroy()
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -484,7 +505,7 @@ namespace Extension.Script
 
         public void OnGuardCommand()
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }
@@ -496,7 +517,7 @@ namespace Extension.Script
 
         public void OnStopCommand()
         {
-            if (delayToEnable)
+            if (isDelayToEnable)
             {
                 return;
             }

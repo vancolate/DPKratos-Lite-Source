@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using DynamicPatcher;
 using PatcherYRpp;
 using PatcherYRpp.FileFormats;
+using PatcherYRpp.Utilities;
 using Extension.Ext;
 using Extension.INI;
 using Extension.Utilities;
@@ -869,8 +870,7 @@ namespace ExtensionHooks
             Pointer<SpawnManagerClass> pSpawnManager = pUnit.Ref.SpawnManager;
             if (pUnit.Ref.Type.Ref.Base.NoSpawnAlt && !pSpawnManager.IsNull && pSpawnManager.Ref.DrawState() < pSpawnManager.Ref.SpawnCount)
             {
-                SpawnAltData data = Ini.GetConfig<SpawnAltData>(Ini.RulesDependency, pUnit.Ref.Type.Ref.Base.Base.ID).Data;
-                if (data.NoShadowSpawnAlt)
+                if (pUnit.TryGetStatus(out TechnoStatusScript status) && status.SpawnData.NoShadowSpawnAlt)
                 {
                     // Logger.Log($"{Game.CurrentFrame} 跳过 WO的影子渲染 {pUnit.Ref.SpawnManager.Ref.DrawState()}");
                     // skip draw shadow
@@ -986,6 +986,34 @@ namespace ExtensionHooks
             return 0x706879;
         }
 
+        [Hook(HookType.AresHook, Address = 0x45197B, Size = 6)]
+        public static unsafe UInt32 BuildingClass_UpdateAnim_SetOwner(REGISTERS* R)
+        {
+            try
+            {
+                Pointer<AnimClass> pBuildingAnim = (IntPtr)R->EBP;
+                if (!pBuildingAnim.IsNull)
+                {
+                    Pointer<TechnoClass> pBuilding = (IntPtr)R->ESI;
+                    pBuildingAnim.SetAnimOwner(pBuilding);
+                    if (pBuildingAnim.TryGetStatus(out AnimStatusScript status))
+                    {
+                        TechnoExt ext = TechnoExt.ExtMap.Find(pBuilding);
+                        if (null != ext)
+                        {
+                            status.AttachOwner = ext;
+                            status.Creater = ext;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.PrintException(e);
+            }
+            return 0;
+        }
+
         #region Draw colour
         // case VISUAL_NORMAL
         [Hook(HookType.AresHook, Address = 0x7063FF, Size = 7)]
@@ -1058,6 +1086,39 @@ namespace ExtensionHooks
         #endregion
 
         #region Techno destroy debris
+        // [Hook(HookType.AresHook, Address = 0x7022FE, Size = 5)]
+        [Hook(HookType.AresHook, Address = 0x702299, Size = 0xA)] // Phobos hook here but why? So stupid
+        public static unsafe UInt32 TechnoClass_Destroy_VxlDebris_Remap(REGISTERS* R)
+        {
+            try
+            {
+                if (AudioVisual.Data.AllowMakeVoxelDebrisByKratos)
+                {
+                    Pointer<TechnoClass> pTechno = (IntPtr)R->ESI;
+                    Pointer<TechnoTypeClass> pType = pTechno.Ref.Type;
+                    // int times = (int)R->EBX;
+                    // Phobos要自己算随机数
+                    int max = pType.Ref.MaxDebris;
+                    int min = pType.Ref.MinDebris;
+                    int times = MathEx.Random.Next(min, max);
+                    DynamicVectorClass<Pointer<VoxelAnimTypeClass>> debrisTypes = pType.Ref.DebrisTypes;
+                    if (debrisTypes.Count > 0)
+                    {
+                        Pointer<HouseClass> pHouse = pTechno.Ref.Owner;
+                        CoordStruct location = pTechno.Ref.Base.Base.GetCoords();
+                        ExpandAnims.PlayExpandDebirs(debrisTypes, pType.Ref.DebrisMaximums, times, location, pHouse, pTechno);
+                    }
+                    R->EBX = (uint)times;
+                    return 0x7023E5;
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.PrintException(e);
+            }
+            return 0;
+        }
+
         [Hook(HookType.AresHook, Address = 0x70256C, Size = 6)]
         public static unsafe UInt32 TechnoClass_Destroy_Debris_Remap(REGISTERS* R)
         {
@@ -1069,6 +1130,12 @@ namespace ExtensionHooks
                 if (!pAnim.IsNull)
                 {
                     pAnim.Ref.Owner = pTechno.Ref.Owner;
+                }
+                int i = (int)R->EBX;
+                // Logger.Log($"{Game.CurrentFrame} 剩余碎片数量 {i}");
+                if (i > 0)
+                {
+                    return 0x7024E0;
                 }
             }
             catch (Exception e)
@@ -1089,6 +1156,12 @@ namespace ExtensionHooks
                 if (!pAnim.IsNull)
                 {
                     pAnim.Ref.Owner = pTechno.Ref.Owner;
+                }
+                int i = (int)R->EBP;
+                // Logger.Log($"{Game.CurrentFrame} 剩余碎片数量 {i}");
+                if (i > 0)
+                {
+                    return 0x70240C;
                 }
             }
             catch (Exception e)

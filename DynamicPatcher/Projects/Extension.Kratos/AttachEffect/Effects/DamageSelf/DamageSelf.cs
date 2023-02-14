@@ -28,8 +28,11 @@ namespace Extension.Script
     [Serializable]
     public class DamageSelf : Effect<DamageSelfData>
     {
+        private int damage = 0;
+        private double fireMult = 1.0;
         private SwizzleablePointer<WarheadTypeClass> pWH = new SwizzleablePointer<WarheadTypeClass>(IntPtr.Zero);
         private BulletDamageData bulletDamageData = new BulletDamageData(1);
+
         private TimerStruct ROFTimer;
 
         private int count;
@@ -45,6 +48,14 @@ namespace Extension.Script
                     return;
                 }
             }
+            // 伤害倍率
+            if (Data.FirepowerMultiplier)
+            {
+                fireMult = AE.pSource.GetDamageMult();
+            }
+            // 伤害值
+            damage = (int)(Data.Damage * fireMult);
+            // Logger.Log($"{Game.CurrentFrame} 获取 [{AE.pSource.Ref.Type.Ref.Base.Base.ID}]{AE.pSource} 的伤害{Data.Damage} * {fireMult} = {damage}");
             // 伤害弹头
             pWH.Pointer = RulesClass.Instance.Ref.C4Warhead;
             if (!Data.Warhead.IsNullOrEmptyOrNone())
@@ -56,7 +67,7 @@ namespace Extension.Script
                 }
             }
             // 抛射体伤害
-            bulletDamageData.Damage = Data.Damage;
+            bulletDamageData.Damage = damage;
             bulletDamageData.Eliminate = false; // 非一击必杀
             bulletDamageData.Harmless = false; // 非和平处置
         }
@@ -88,7 +99,8 @@ namespace Extension.Script
                         count++;
                         ROFTimer.Start(Data.ROF);
 
-                        int realDamage = Data.Damage;
+                        int realDamage = damage;
+                        // 制造伤害
                         if (Data.Peaceful)
                         {
                             // 静默击杀，需要计算实际伤害
@@ -119,7 +131,8 @@ namespace Extension.Script
                         if (realDamage < 0 || pTechno.Ref.CloakStates == CloakStates.UnCloaked || Data.Decloak)
                         {
                             // 维修或者显形直接炸
-                            pTechno.Ref.Base.ReceiveDamage(Data.Damage, 0, pWH, pDamageMaker, Data.IgnoreArmor, pTechno.Ref.Type.Ref.Crewed, AE.pSourceHouse);
+                            pTechno.Ref.Base.ReceiveDamage(damage, 0, pWH, pDamageMaker, Data.IgnoreArmor, pTechno.Ref.Type.Ref.Crewed, AE.pSourceHouse);
+                            // Logger.Log($"{Game.CurrentFrame} [{AE.pOwner.Ref.Type.Ref.Base.ID}]{AE.pOwner} 制造伤害 {realDamage}, 无视护甲 {Data.IgnoreArmor}");
                         }
                         else
                         {
@@ -140,6 +153,7 @@ namespace Extension.Script
                             {
                                 // 血量可以减到负数不死
                                 pTechno.Ref.Base.Health -= realDamage;
+                                // Logger.Log($"{Game.CurrentFrame} [{AE.pOwner.Ref.Type.Ref.Base.ID}]{AE.pOwner} 扣除血量 {realDamage}");
                             }
                         }
 

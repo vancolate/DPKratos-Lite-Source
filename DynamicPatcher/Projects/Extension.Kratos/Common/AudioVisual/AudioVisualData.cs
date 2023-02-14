@@ -10,11 +10,9 @@ namespace Extension.Ext
 {
 
     [Serializable]
-    public class SpawnAltData : INIAutoConfig
+    public class AudioVisualData : INIAutoConfig
     {
-        public bool NoShadowSpawnAlt = false;
-
+        // 动画
+        public bool AllowMakeVoxelDebrisByKratos = true;
     }
-
-
 }

@@ -50,7 +50,7 @@ namespace Extension.Script
                     GiftBoxState.IsOpen = true;
                     // 释放礼物
                     List<string> gifts = GiftBoxState.GetGiftList();
-                    if (null != gifts && gifts.Count > 0)
+                    if (null != gifts && gifts.Any())
                     {
                         ReleseGift(gifts, GiftBoxState.Data);
                     }
@@ -95,7 +95,7 @@ namespace Extension.Script
                     GiftBoxState.IsOpen = true;
                     // 释放礼物
                     List<string> gifts = GiftBoxState.GetGiftList();
-                    if (null != gifts && gifts.Count > 0)
+                    if (null != gifts && gifts.Any())
                     {
                         ReleseGift(gifts, GiftBoxState.Data);
                     }
@@ -113,7 +113,7 @@ namespace Extension.Script
                 GiftBoxState.IsOpen = true;
                 // 释放礼物
                 List<string> gifts = GiftBoxState.GetGiftList();
-                if (null != gifts && gifts.Count > 0)
+                if (null != gifts && gifts.Any())
                 {
                     ReleseGift(gifts, GiftBoxState.Data);
                 }
@@ -137,7 +137,15 @@ namespace Extension.Script
             {
                 pHouse = pTechno.Ref.Owner;
             }
-            CoordStruct location = pTechno.Ref.Base.Base.GetCoords();
+            CoordStruct location = default;
+            if (data.RealCoords)
+            {
+                location = pTechno.Ref.Base.GetRenderCoords();
+            }
+            else
+            {
+                location = pTechno.Ref.Base.Base.GetCoords();
+            }
             Mission curretMission = pTechno.Convert<MissionClass>().Ref.CurrentMission;
 
             // 获取投送单位的位置

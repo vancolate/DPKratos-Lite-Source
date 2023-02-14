@@ -21,6 +21,7 @@ namespace GeneralHooks
             EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, MathExHandler);
             // Kartos event
             EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, CombatDamage.Reload);
+            EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, AudioVisual.Reload);
             EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, TechnoStatusScript.Clear);
             EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, BulletStatusScript.Clear);
             EventSystem.General.AddPermanentHandler(EventSystem.General.ScenarioStartEvent, PrintTextManager.Clear);
@@ -29,7 +30,9 @@ namespace GeneralHooks
         private static void MathExHandler(object sender, EventArgs e)
         {
             // ensure network synchronization
-            MathEx.SetRandomSeed(0);
+            int seed = ScenarioClass.Seed;
+            Logger.Log($"Scenario start, set random seed = {seed}");
+            MathEx.SetRandomSeed(seed);
             //Logger.Log("set random seed!");
         }
 

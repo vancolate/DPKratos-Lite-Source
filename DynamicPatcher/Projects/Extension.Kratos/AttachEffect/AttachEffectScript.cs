@@ -38,16 +38,16 @@ namespace Extension.Script
 
         public Pointer<ObjectClass> pOwner => pObject;
 
-        public IConfigWrapper<AttachEffectTypeData> aeTypeData = null;
-        public AttachEffectTypeData AETypeData
+        public IConfigWrapper<AttachEffectTypeData> _aeTypeData = null;
+        public AttachEffectTypeData aeTypeData
         {
             get
             {
-                if (null == aeTypeData)
+                if (null == _aeTypeData)
                 {
-                    aeTypeData = Ini.GetConfig<AttachEffectTypeData>(Ini.RulesDependency, section);
+                    _aeTypeData = Ini.GetConfig<AttachEffectTypeData>(Ini.RulesDependency, section);
                 }
-                return aeTypeData.Data;
+                return _aeTypeData.Data;
             }
         }
         public List<AttachEffect> AttachEffects; // 所有有效的AE
@@ -71,6 +71,36 @@ namespace Extension.Script
         public bool IsBuilding => AbsType == AbstractType.Building;
         public bool IsFoot => !IsBullet && !IsBuilding;
 
+        public bool InBuilding
+        {
+            get
+            {
+                if (!isDead && IsBuilding)
+                {
+                    Pointer<BuildingClass> pBuilding = pObject.Convert<BuildingClass>();
+                    MissionClass mission = pBuilding.Ref.BaseMission;
+                    // Logger.Log($"{Game.CurrentFrame} 建筑 [{section}]{pOwner} 是否在建筑, BState = {pBuilding.Ref.BState}, Mission = {mission.CurrentMission}, MissionStatus = {mission.MissionStatus}");
+                    return pBuilding.Ref.BState == BStateType.CONSTRUCTION && mission.CurrentMission != Mission.Selling;
+                }
+                return false;
+            }
+        }
+
+        public bool InSelling
+        {
+            get
+            {
+                if (IsBuilding)
+                {
+                    Pointer<BuildingClass> pBuilding = pObject.Convert<BuildingClass>();
+                    MissionClass mission = pBuilding.Ref.BaseMission;
+                    // Logger.Log($"{Game.CurrentFrame} 建筑 [{section}]{pOwner} 是否在出售, BState = {pBuilding.Ref.BState}, Mission = {mission.CurrentMission}, MissionStatus = {mission.MissionStatus}");
+                    return pBuilding.Ref.BState == BStateType.CONSTRUCTION && mission.CurrentMission == Mission.Selling && mission.MissionStatus > 0;
+                }
+                return false;
+            }
+        }
+
         public bool PowerOff;
 
         public List<int> PassengerIds; // 乘客持有的ID
@@ -83,16 +113,16 @@ namespace Extension.Script
         private int locationMarkDistance; // 多少格记录一个位置
         private double totleMileage; // 总里程
 
-        private IConfigWrapper<AttachEffectTypeTypeData> aeTypeTypeData = null;
-        private AttachEffectTypeTypeData AETypeTypeData
+        private IConfigWrapper<AttachEffectTypeTypeData> _aeTypeTypeData = null;
+        private AttachEffectTypeTypeData aeTypeTypeData
         {
             get
             {
-                if (null == aeTypeTypeData)
+                if (null == _aeTypeTypeData)
                 {
-                    aeTypeTypeData = Ini.GetConfig<AttachEffectTypeTypeData>(Ini.RulesDependency, section);
+                    _aeTypeTypeData = Ini.GetConfig<AttachEffectTypeTypeData>(Ini.RulesDependency, section);
                 }
-                return aeTypeTypeData.Data;
+                return _aeTypeTypeData.Data;
             }
         }
         private bool attachEffectOnceFlag = false; // 已经在Update事件中附加过一次section上写的AE
@@ -110,12 +140,14 @@ namespace Extension.Script
                     }
                     else
                     {
-                        _isDead = pObject.Convert<TechnoClass>().IsDead();
+                        // 出售中的建筑也判定为死亡
+                        _isDead = pObject.Convert<TechnoClass>().IsDead() || InSelling;
                     }
                 }
                 return _isDead;
             }
         }
+
 
         private int locationSpace; // 替身火车的车厢间距
 
@@ -291,8 +323,8 @@ namespace Extension.Script
         /// <param name="fromPassenger">绑定乘客</param>
         public void Attach(string type, Pointer<ObjectClass> pSource = default, Pointer<HouseClass> pSourceHouse = default, bool attachOnceFlag = false, CoordStruct warheadLocation = default, int aeMode = -1, bool fromPassenger = false)
         {
-            // Logger.Log($"{Game.CurrentFrame} 为 [{section}]{pOwner} 附加 AE [{type}]. attachOnceFlag = {attachOnceFlag}, 来源 {pSource}");
             IConfigWrapper<AttachEffectData> aeDate = Ini.GetConfig<AttachEffectData>(Ini.RulesDependency, type);
+            // Logger.Log($"{Game.CurrentFrame} 为 [{section}]{pOwner} 附加 AE [{type}]. attachOnce = {aeDate.Data.AttachOnceInTechnoType} attachOnceFlag = {attachOnceFlag}, 来源 {pSource}");
             if (attachOnceFlag && aeDate.Data.AttachOnceInTechnoType)
             {
                 return;
@@ -338,7 +370,7 @@ namespace Extension.Script
                 return;
             }
             // 是否需要标记
-            if (!IsOnMark(data))
+            if (!data.IsOnMark(this))
             {
                 return;
             }
@@ -506,6 +538,8 @@ namespace Extension.Script
                     if (aeTypes.Contains(ae.AEData.Name))
                     {
                         ae.Disable(location);
+                        AttachEffects.Remove(ae);
+                        ReduceStackCount(ae);
                     }
                 }
             }
@@ -846,14 +880,6 @@ namespace Extension.Script
             return TryGetMarks(out HashSet<string> hasMarks) && (marks.Intersect(hasMarks).Count() > 0);
         }
 
-        private bool IsOnMark(AttachEffectData data)
-        {
-            return null == data.OnlyAffectMarks || !data.OnlyAffectMarks.Any()
-                || (TryGetMarks(out HashSet<string> marks)
-                    && (data.OnlyAffectMarks.Intersect(marks).Count() > 0)
-                );
-        }
-
         private bool CheckPassanger(Pointer<TechnoClass> pTechno, out List<int> passengerIds, Found<ObjectClass> foundPassanger = null)
         {
             passengerIds = null;
@@ -869,7 +895,7 @@ namespace Extension.Script
                         // 查找该乘客身上的AEMode设置
                         if (pPassenger.Convert<TechnoClass>().TryGetAEManager(out AttachEffectScript pAEM))
                         {
-                            int aeMode = pAEM.AETypeData.AEMode;
+                            int aeMode = pAEM.aeTypeData.AEMode;
                             if (aeMode >= 0)
                             {
                                 passengerIds.Add(aeMode);
@@ -952,8 +978,8 @@ namespace Extension.Script
                 if (!pTechno.IsNull && pTechno.Convert<ObjectClass>() == pOwner)
                 {
                     attachEffectOnceFlag = false;
-                    aeTypeTypeData = null;
-                    aeTypeData = null;
+                    _aeTypeTypeData = null;
+                    _aeTypeData = null;
                     // Logger.Log($"{Game.CurrentFrame} [{section}]发生了类型改变，当前类型[{pObject.Ref.Type.Ref.Base.ID}]");
                     // 移除不保留的AE
                     for (int i = Count() - 1; i >= 0; i--)
@@ -1005,7 +1031,7 @@ namespace Extension.Script
                     }
                 }
                 // 添加section自带AE，无分组的
-                Attach(AETypeData);
+                Attach(aeTypeData);
                 // 检查乘客并附加乘客带来的AE
                 if (pOwner.CastToTechno(out Pointer<TechnoClass> pTechno))
                 {
@@ -1033,15 +1059,15 @@ namespace Extension.Script
                     });
                 }
                 // 添加分组的
-                if (AETypeTypeData.Enable)
+                if (aeTypeTypeData.Enable)
                 {
                     // Logger.Log($"{Game.CurrentFrame} [{section}]{pOwner} 添加分组AE，一共有{aeTypeTypeData.Datas.Count()}组");
-                    foreach (AttachEffectTypeData typeData in AETypeTypeData.Datas.Values)
+                    foreach (AttachEffectTypeData typeData in aeTypeTypeData.Datas.Values)
                     {
                         if (typeData.AttachByPassenger)
                         {
                             // 需要乘客激活
-                            // Logger.Log($"{Game.CurrentFrame} [{section}]{pOwner} 添加分组AE，一共有{aeTypeTypeData.Datas.Count()}组，需要乘客才能激活，收集到乘客ID有 {passengerIds.Count()} 个，[{string.Join(", ", passengerIds)}]");
+                            // Logger.Log($"{Game.CurrentFrame} [{section}]{pOwner} 添加分组AE，一共有{aeTypeTypeData.Datas.Count()}组，需要乘客才能激活，收集到乘客ID有 {PassengerIds.Count()} 个，[{string.Join(", ", PassengerIds)}]");
                             int aeMode = typeData.AEModeIndex;
                             if (null != PassengerIds && PassengerIds.Any() && PassengerIds.Contains(aeMode))
                             {

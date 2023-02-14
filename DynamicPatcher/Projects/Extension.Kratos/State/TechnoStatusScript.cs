@@ -127,7 +127,7 @@ namespace Extension.Script
             this.OverrideWeaponState = new OverrideWeaponState();
             // 分散
             heir.ScatterState = this.ScatterState;
-            this.ScatterState = new ScatterState();
+            this.ScatterState = new State<ScatterData>();
             // 传送
             heir.TeleportState = this.TeleportState;
             this.TeleportState = new TeleportState();
@@ -296,6 +296,11 @@ namespace Extension.Script
                             pTechno.ClearAllTarget();
                         }
                     }
+                    // 清理伪装弹头
+                    if (warheadTypeData.ClearDisguise && pTechno.Ref.Base.IsDisguised())
+                    {
+                        pTechno.Ref.Disguised = false;
+                    }
                     // 欠揍弹头
                     if (warheadTypeData.Lueluelue && !pAttacker.IsNull && pAttacker.CastToTechno(out Pointer<TechnoClass> pTargetTechno) && pTechno.CanAttack(pTargetTechno))
                     {
@@ -417,6 +422,7 @@ namespace Extension.Script
             _typeData = null;
             _fireFLHOnBodyData = null;
             _fireFLHOnTargetData = null;
+            _spawnData = null;
             // 重新初始化状态机
             InitState();
         }
